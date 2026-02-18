@@ -1,7 +1,7 @@
 {
   "name": "vue-nuxt-permission",
   "version": "2.0.7",
-  "description": "A unified permission system for Vue 3 and Nuxt 3 with directives, guards, and async support.",
+  "description": "A unified permission system for Vue 3 and Nuxt 3/4 with directives, guards, and async support.",
   "type": "module",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -41,6 +41,7 @@
     "nuxt",
     "nuxt-module",
     "nuxt3",
+    "nuxt4",
     "vue",
     "vue3",
     "permissions",
@@ -67,8 +68,11 @@
     "url": "https://github.com/keroloszakaria/vue-nuxt-permission/issues"
   },
   "homepage": "https://vue-nuxt-permission.surge.sh",
+  "nuxt": {
+    "module": "./dist/module.mjs"
+  },
   "peerDependencies": {
-    "nuxt": "^3.0.0",
+    "nuxt": ">=3.0.0",
     "vue": "^3.0.0"
   },
   "devDependencies": {

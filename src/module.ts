@@ -1,4 +1,10 @@
-import { defineNuxtModule, addPlugin, createResolver } from "@nuxt/kit";
+import {
+  addImports,
+  addPlugin,
+  createResolver,
+  defineNuxtModule,
+} from "@nuxt/kit";
+import { defu } from "defu";
 
 export interface ModuleOptions {
   permissions?: string[];
@@ -12,7 +18,7 @@ export default defineNuxtModule<ModuleOptions>({
     name: "vue-nuxt-permission",
     configKey: "permission",
     compatibility: {
-      nuxt: "^3.0.0",
+      nuxt: ">=3.0.0",
     },
   },
 
@@ -34,17 +40,34 @@ export default defineNuxtModule<ModuleOptions>({
       typeof options.fetchPermissions !== "function"
     ) {
       throw new TypeError(
-        "[vue-nuxt-permission] fetchPermissions must be a URL string or async function"
+        "[vue-nuxt-permission] fetchPermissions must be a URL string or async function",
       );
     }
 
     const resolver = createResolver(import.meta.url);
 
-    addPlugin({
-      src: resolver.resolve("./runtime/plugin"),
-      mode: "all",
+    // Register runtime plugin
+    addPlugin(resolver.resolve("./runtime/plugin"));
+
+    // Auto-import usePermission composable
+    addImports({
+      name: "usePermission",
+      from: "vue-nuxt-permission",
     });
 
-    nuxt.options.runtimeConfig.public.permission = options;
+    // Expose options to runtime via runtimeConfig (merge, don't overwrite)
+    nuxt.options.runtimeConfig.public.permission = defu(
+      nuxt.options.runtimeConfig.public.permission as Record<string, unknown>,
+      {
+        permissions: options.permissions,
+        developmentMode: options.developmentMode,
+        persist: options.persist,
+        // Functions can't be serialized to runtimeConfig — only pass URL strings
+        fetchPermissions:
+          typeof options.fetchPermissions === "string"
+            ? options.fetchPermissions
+            : undefined,
+      },
+    );
   },
 });
