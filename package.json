@@ -1,0 +1,90 @@
+{
+  "name": "vue-nuxt-permission",
+  "version": "2.0.7",
+  "description": "A unified permission system for Vue 3 and Nuxt 3 with directives, guards, and async support.",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./module": "./dist/module.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "vite build --watch",
+    "prebuild": "node -e \"try{require('fs').rmSync('dist',{recursive:true,force:true})}catch(e){}\"",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "verify": "npm run build && npm run test",
+    "lint": "eslint . --ext .ts,.vue --fix",
+    "release": "npm publish --access public",
+    "deploy:github": "npm run build && git add . && git commit -m 'chore: release' && git push",
+    "prepublishOnly": "npm run build",
+    "clean": "rimraf dist",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs",
+    "docs:deploy": "surge docs/.vitepress/dist --domain vue-nuxt-permission.surge.sh",
+    "docs:serve": "vitepress serve docs"
+  },
+  "keywords": [
+    "nuxt",
+    "nuxt-module",
+    "nuxt3",
+    "vue",
+    "vue3",
+    "permissions",
+    "directive",
+    "router-guard",
+    "access-control",
+    "role-based",
+    "authorization",
+    "rbac",
+    "acl",
+    "jervis-labs"
+  ],
+  "author": {
+    "name": "Kerolos Zakaria",
+    "email": "keroloszakaria2@gmail.com",
+    "url": "https://github.com/keroloszakaria"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/keroloszakaria/vue-nuxt-permission.git"
+  },
+  "bugs": {
+    "url": "https://github.com/keroloszakaria/vue-nuxt-permission/issues"
+  },
+  "homepage": "https://vue-nuxt-permission.surge.sh",
+  "peerDependencies": {
+    "nuxt": "^3.0.0",
+    "vue": "^3.0.0"
+  },
+  "devDependencies": {
+    "@nuxt/kit": "^4.2.0",
+    "@types/jsdom": "^27.0.0",
+    "@types/node": "^22.0.0",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "@vue/test-utils": "^2.4.6",
+    "eslint": "^8.57.0",
+    "jsdom": "^27.1.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.2.0",
+    "vite-plugin-dts": "^3.9.1",
+    "vitest": "^4.0.6",
+    "vue": "^3.5.22",
+    "vue-router": "^4.6.3",
+    "vitepress": "^1.6.4"
+  }
+}
