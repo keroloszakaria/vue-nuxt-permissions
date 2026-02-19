@@ -57,15 +57,27 @@ Modern applications often struggle with permission and authorization:
 
 ## Quick Example
 
-### 1. Define Permissions
+### 1. Setup (Vue 3)
 
 ```ts
-// plugins/permission.ts
-export default defineNuxtPlugin(() => {
-  usePermissionConfig().set({
-    permissions: ["read", "write", "admin"],
-  });
+// main.ts
+import { createApp } from "vue";
+import PermissionPlugin from "vue-nuxt-permission";
+
+const app = createApp(App);
+app.use(PermissionPlugin, {
+  permissions: ["read", "write", "admin"],
 });
+app.mount("#app");
+```
+
+Or set permissions dynamically after login:
+
+```ts
+import { usePermission } from "vue-nuxt-permission";
+
+const { setPermissions } = usePermission();
+setPermissions(["read", "write", "admin"]);
 ```
 
 ### 2. Use in Templates
@@ -81,14 +93,20 @@ export default defineNuxtPlugin(() => {
 </template>
 ```
 
-### 3. Use in Routes
+### 3. Protect Routes
 
 ```ts
-// middleware/permissions.ts
-export default defineRouteMiddleware((to, from) => {
-  if (!hasPermission("admin")) {
-    return navigateTo("/");
-  }
+// router.ts
+import { globalGuard } from "vue-nuxt-permission";
+
+router.beforeEach(async (to, from, next) => {
+  globalGuard(to, from, next, {
+    getAuthState: () => ({
+      isAuthenticated: !!localStorage.getItem("token"),
+    }),
+    loginPath: "/login",
+    homePath: "/dashboard",
+  });
 });
 ```
 
@@ -183,12 +201,16 @@ const { hasPermission, hasAny, hasAll } = usePermission();
 
 ### Guards
 
-Protect routes with middleware:
+Protect routes with `globalGuard`:
 
 ```ts
-// middleware/admin.ts
-export default defineRouteMiddleware((to, from) => {
-  if (!hasPermission("admin")) return navigateTo("/");
+import { globalGuard } from "vue-nuxt-permission";
+
+router.beforeEach(async (to, from, next) => {
+  globalGuard(to, from, next, {
+    getAuthState: () => ({ isAuthenticated: !!token }),
+    loginPath: "/login",
+  });
 });
 ```
 

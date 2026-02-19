@@ -156,15 +156,168 @@ definePageMeta({
 </script>
 ```
 
-## Managing Permissions
+## Real-World: Login & Permissions Flow
 
-Permissions are defined when setting up the plugin. To update permissions at runtime, use the `refresh()` method:
+In real applications, you don't hardcode permissions. You get them from your API after login. Here's the complete flow:
+
+### Step 1: Login & Set Permissions
+
+After login, use `setPermissions()` to save the user's permissions (updates memory + localStorage):
 
 ```ts
-const { refresh } = usePermission();
+import { usePermission } from "vue-nuxt-permission";
 
-// Call this when permissions change (e.g., after user login)
-refresh();
+const { setPermissions } = usePermission();
+
+const login = async (credentials) => {
+  const response = await fetch("/api/login", {
+    method: "POST",
+    body: JSON.stringify(credentials),
+  });
+  const { user, token } = await response.json();
+
+  // ✅ This saves permissions to memory AND localStorage
+  setPermissions(user.permissions);
+  // user.permissions = ["create-users", "view-dashboard", "edit-posts", ...]
+
+  localStorage.setItem("token", token);
+};
+```
+
+::: warning Common Mistake
+Do NOT use `configurePermission()` directly for this. It only updates memory, not localStorage. Always use `setPermissions()` from the composable.
+:::
+
+### Step 2: Protect Routes with globalGuard
+
+Use `globalGuard` in your Vue Router to automatically protect routes:
+
+```ts
+import { createRouter, createWebHistory } from "vue-router";
+import { globalGuard } from "vue-nuxt-permission";
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    { path: "/login", name: "login", component: LoginPage },
+    {
+      path: "/",
+      component: DashboardLayout,
+      meta: { requiresAuth: true },
+      children: [
+        {
+          path: "dashboard",
+          component: Dashboard,
+        },
+        {
+          path: "users",
+          component: UserManagement,
+          meta: {
+            checkPermission: true, // ← Enable permission check
+            permissions: ["manage-users"], // ← Required permission(s)
+          },
+        },
+      ],
+    },
+  ],
+});
+
+router.beforeEach(async (to, from, next) => {
+  globalGuard(to, from, next, {
+    authRoutes: [{ path: "/login" }],
+    getAuthState: () => ({
+      isAuthenticated: !!localStorage.getItem("token"),
+      permissions: [], // or get from your auth store
+    }),
+    loginPath: "/login",
+    homePath: "/dashboard",
+  });
+});
+```
+
+::: tip How globalGuard works
+
+1. **Not authenticated + protected route** → redirects to `loginPath`
+2. **Authenticated + auth route (e.g. /login)** → redirects to `homePath`
+3. **Route has `checkPermission: true`** → checks `meta.permissions` against user's permissions
+4. **Permission denied** → tries to find an accessible route, or redirects to `loginPath`
+   :::
+
+### Step 3: Show/Hide UI Elements
+
+Now use `v-permission` in templates to control what the user sees:
+
+```vue
+<template>
+  <div>
+    <h1>Dashboard</h1>
+
+    <button v-permission="'create-users'">Add User</button>
+    <button v-permission="'edit-posts'">Edit Post</button>
+    <button v-permission="'delete-posts'">Delete Post</button>
+  </div>
+</template>
+```
+
+### Step 4: Logout & Clear Permissions
+
+```ts
+const logout = () => {
+  const { setPermissions } = usePermission();
+
+  setPermissions([]); // Clears memory + localStorage
+  localStorage.removeItem("token");
+  router.push("/login");
+};
+```
+
+### Complete Login Example
+
+Here's a full login composable for a real project:
+
+```ts
+// composables/useAuth.ts
+import { ref } from "vue";
+import { usePermission } from "vue-nuxt-permission";
+import { useRouter } from "vue-router";
+
+export function useAuth() {
+  const router = useRouter();
+  const { setPermissions } = usePermission();
+  const user = ref(null);
+  const isAuthenticated = ref(false);
+
+  const login = async (email: string, password: string) => {
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const { data } = await res.json();
+
+    // Save token
+    localStorage.setItem("token", data.token);
+
+    // Save user
+    user.value = data.user;
+    isAuthenticated.value = true;
+
+    // ✅ Save permissions (memory + localStorage under "__v_permission__")
+    setPermissions(data.user.permissions);
+
+    router.push("/dashboard");
+  };
+
+  const logout = () => {
+    localStorage.removeItem("token");
+    user.value = null;
+    isAuthenticated.value = false;
+    setPermissions([]);
+    router.push("/login");
+  };
+
+  return { user, isAuthenticated, login, logout };
+}
 ```
 
 ## Common Scenarios
@@ -189,8 +342,8 @@ Show edit/delete buttons only when user has permission:
 <template>
   <div class="card">
     <h2>{{ item.title }}</h2>
-    <button v-permission="'write'">Edit</button>
-    <button v-permission="'delete'">Delete</button>
+    <button v-permission="'edit-posts'">Edit</button>
+    <button v-permission="'delete-posts'">Delete</button>
   </div>
 </template>
 ```
@@ -225,19 +378,32 @@ const canDelete = isOwner && (await hasPermission("delete"));
 - [Configuration](./configuration) - Configure permissions and storage
 - [Directive Reference](./api/v-permission) - Complete directive API
 - [Composable Reference](./api/usePermission) - Complete composable API
+- [Guards Reference](./guards) - globalGuard and route protection
 - [Quick Reference](./quick-reference) - Copy-paste patterns
 - [Advanced Usage](./usage/advanced) - Complex scenarios
 
 ## Troubleshooting
 
-### Elements Still Showing Without Permission
+### `__v_permission__` Not Appearing in localStorage
 
-Make sure you've defined the permission in your config:
+You're probably using `configurePermission()` instead of `setPermissions()`:
 
 ```ts
-permission: {
-  permissions: ['read', 'write', 'admin'], // Include your permissions
-}
+// ❌ Wrong — only updates memory, NOT localStorage
+configurePermission(userData.permissions);
+
+// ✅ Correct — updates memory AND localStorage
+const { setPermissions } = usePermission();
+setPermissions(userData.permissions);
+```
+
+### Elements Still Showing Without Permission
+
+Make sure permissions are set after login:
+
+```ts
+const { setPermissions } = usePermission();
+setPermissions(["read", "write", "admin"]);
 ```
 
 ### usePermission() is Undefined
@@ -252,13 +418,18 @@ modules: ['vue-nuxt-permission']
 app.use(PermissionPlugin, { permissions: [...] })
 ```
 
-### Permissions Not Updating
+### Route Not Protected
 
-Call `refresh()` when permissions change:
+Make sure the route has both `checkPermission: true` AND `permissions` in meta:
 
 ```ts
-const { refresh } = usePermission();
-
-// After user login or permission change
-refresh();
+{
+  path: '/admin',
+  component: AdminPage,
+  meta: {
+    requiresAuth: true,
+    checkPermission: true,              // ← Must be true
+    permissions: ['admin-access'],       // ← Required permission
+  }
+}
 ```

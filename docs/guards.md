@@ -142,7 +142,202 @@ export default defineRouteMiddleware(async (to, from) => {
 
 ## Vue Router Guards
 
-### Global Navigation Guard
+### globalGuard — Ready-to-Use Guard
+
+`globalGuard` is a complete navigation guard that handles authentication, authorization, and redirects. It's the recommended way to protect routes in Vue 3 apps.
+
+#### Basic Setup
+
+```typescript
+import { createRouter, createWebHistory } from "vue-router";
+import { globalGuard } from "vue-nuxt-permission";
+
+const authRoutes = [
+  { path: "/login", name: "login", component: LoginPage },
+  { path: "/register", name: "register", component: RegisterPage },
+];
+
+const protectedRoutes = [
+  {
+    path: "dashboard",
+    component: Dashboard,
+  },
+  {
+    path: "users",
+    component: UserManagement,
+    meta: {
+      checkPermission: true,
+      permissions: ["manage-users"],
+    },
+  },
+  {
+    path: "settings",
+    component: Settings,
+    meta: {
+      checkPermission: true,
+      permissions: { permissions: ["admin", "settings"], mode: "and" },
+    },
+  },
+];
+
+const routes = [
+  ...authRoutes,
+  {
+    path: "/",
+    component: DashboardLayout,
+    meta: { requiresAuth: true },
+    children: protectedRoutes,
+  },
+];
+
+const router = createRouter({ history: createWebHistory(), routes });
+
+router.beforeEach(async (to, from, next) => {
+  globalGuard(to, from, next, {
+    authRoutes,
+    protectedRoutes,
+    getAuthState: () => {
+      const token = localStorage.getItem("token");
+      return {
+        isAuthenticated: !!token,
+        permissions: [], // optional: override permissions source
+      };
+    },
+    loginPath: "/login",
+    homePath: "/dashboard",
+  });
+});
+
+export default router;
+```
+
+#### How globalGuard Works
+
+The guard runs these checks **in order**:
+
+| Scenario                                             | Action                                                  |
+| ---------------------------------------------------- | ------------------------------------------------------- |
+| Not authenticated + protected route (`requiresAuth`) | Redirect to `loginPath`                                 |
+| Authenticated + auth route (e.g. `/login`)           | Redirect to `homePath`                                  |
+| Route has `checkPermission: true` + `permissions`    | Check user's permissions                                |
+| Permission denied                                    | Find first accessible route, or redirect to `loginPath` |
+| All checks pass                                      | Allow navigation                                        |
+
+#### Route Meta Options
+
+```typescript
+meta: {
+  requiresAuth: true,           // Route needs authentication
+  checkPermission: true,         // Enable permission checking
+  permissions: 'admin',          // Required permission(s)
+}
+```
+
+The `permissions` field accepts all permission formats:
+
+```typescript
+// Single permission
+meta: { checkPermission: true, permissions: 'admin' }
+
+// Any of these (OR)
+meta: { checkPermission: true, permissions: ['admin', 'editor'] }
+
+// Complex mode
+meta: { checkPermission: true, permissions: { permissions: ['admin', 'verified'], mode: 'and' } }
+```
+
+::: warning Important
+Both `checkPermission: true` AND `permissions` must be set in meta. If `checkPermission` is missing or false, the guard won't check permissions even if `permissions` is defined.
+:::
+
+#### GuardOptions Reference
+
+```typescript
+interface GuardOptions {
+  authRoutes?: Array<{ path: string }>; // Routes that don't need auth (login, register)
+  protectedRoutes?: PermissionRoute[]; // Routes with permission metadata
+  getAuthState?: () => AuthState; // Function returning auth state
+  loginPath?: string; // Redirect path for unauthenticated (default: '/login')
+  homePath?: string; // Redirect path for authenticated on auth pages (default: '/')
+  onDenied?: (to, from) => void; // Callback when access is denied
+  onAllowed?: (to, from) => void; // Callback when access is allowed
+}
+
+interface AuthState {
+  isAuthenticated: boolean;
+  permissions?: string[]; // Override permissions (optional)
+  user?: {
+    // User object (optional)
+    permissions?: string[];
+    [key: string]: any;
+  };
+}
+```
+
+#### Permission Resolution
+
+The guard resolves permissions in this order:
+
+1. `authState.permissions` (from `getAuthState()`)
+2. Global config permissions (from `configurePermission()` / `setPermissions()`)
+
+```typescript
+getAuthState: () => ({
+  isAuthenticated: true,
+  permissions: authStore.user?.permissions || [], // ← Explicitly pass permissions
+});
+```
+
+#### Using with Pinia Auth Store
+
+```typescript
+import { useAuthStore } from "@/stores/auth";
+
+router.beforeEach(async (to, from, next) => {
+  globalGuard(to, from, next, {
+    authRoutes: [{ path: "/login" }, { path: "/register" }],
+    protectedRoutes,
+    getAuthState: () => {
+      const auth = useAuthStore();
+      return {
+        isAuthenticated: auth.isAuthenticated,
+        permissions: auth.user?.permissions || [],
+        user: auth.user,
+      };
+    },
+    loginPath: "/login",
+    homePath: "/dashboard",
+    onDenied: (to) => {
+      console.warn(`Access denied to ${to.path}`);
+    },
+  });
+});
+```
+
+#### Combining with Other Logic
+
+You can add custom logic before or after globalGuard:
+
+```typescript
+router.beforeEach(async (to, from, next) => {
+  // Custom logic before guard
+  const { updateTitle } = useAppSettings();
+  updateTitle(to.meta?.title || "My App");
+
+  // Run the permission guard
+  globalGuard(to, from, next, {
+    authRoutes,
+    protectedRoutes,
+    getAuthState: () => ({
+      isAuthenticated: !!localStorage.getItem("token"),
+    }),
+    loginPath: "/login",
+    homePath: "/dashboard",
+  });
+});
+```
+
+### Manual Navigation Guard
 
 ```typescript
 // router.ts or router/index.ts
@@ -402,7 +597,7 @@ export default defineRouteMiddleware(async (to, from) => {
     // Log denied access attempt
     console.warn(
       `Permission denied for user ${authStore.user?.id}: ` +
-        `trying to access ${to.path} (requires ${requiredPermission})`
+        `trying to access ${to.path} (requires ${requiredPermission})`,
     );
 
     return navigateTo("/unauthorized");

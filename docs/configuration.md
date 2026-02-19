@@ -237,8 +237,8 @@ app.use(PermissionPlugin, {
 Stored as Base64-encoded JSON in `localStorage`:
 
 ```
-Key: __v_permission_cache__
-Value: eyJwZXJtaXNzaW9ucyI6WyJ1c2VyLnZpZXciLCJ1c2VyLmVkaXQiXX0=
+Key: __v_permission__
+Value: WyJ1c2VyLnZpZXciLCJ1c2VyLmVkaXQiXQ==
 ```
 
 ### Manual Storage Management
@@ -547,136 +547,130 @@ export default defineNuxtPlugin(async (nuxtApp) => {
 });
 ```
 
-## Refreshing Permissions
+## Updating Permissions at Runtime
 
-### Update Permissions at Runtime
+### setPermissions() — The Primary Way
+
+Use `setPermissions()` from the composable to update permissions. This updates **both** in-memory state **and** localStorage:
 
 ```typescript
 import { usePermission } from "vue-nuxt-permission";
 
-const { refresh } = usePermission();
+const { setPermissions } = usePermission();
 
-// Refresh permissions from the source
-await refresh();
-
-// Or set new permissions directly
-await refresh(["user.view", "post.edit", "admin.access"]);
+// Set new permissions (replaces current ones, saves to localStorage)
+setPermissions(["user.view", "post.edit", "admin.access"]);
 ```
 
-### Refresh After Login
+### After Login
 
 ```vue
 <script setup lang="ts">
 import { usePermission } from "vue-nuxt-permission";
 
-const { refresh } = usePermission();
-const authStore = useAuthStore();
+const { setPermissions } = usePermission();
 
 async function handleLogin(credentials) {
-  // Authenticate user
-  await authStore.login(credentials);
+  const response = await fetch("/api/login", {
+    method: "POST",
+    body: JSON.stringify(credentials),
+  });
+  const { user, token } = await response.json();
 
-  // Refresh permissions from backend
-  await refresh();
+  // ✅ Save permissions to memory + localStorage
+  setPermissions(user.permissions);
 
-  // Navigate to dashboard
+  localStorage.setItem("token", token);
   navigateTo("/dashboard");
 }
 </script>
 ```
 
-### Refresh After Role Change
+### After Role Change
 
 ```typescript
+import { usePermission } from "vue-nuxt-permission";
+
+const { setPermissions } = usePermission();
+
 // Handle role change in real-time
 watch(
   () => authStore.user?.role,
   async (newRole) => {
     if (newRole) {
-      // Fetch new permissions for the role
       const response = await fetch(`/api/roles/${newRole}/permissions`);
       const { permissions } = await response.json();
 
-      // Update permissions
-      await usePermission().refresh(permissions);
+      // Update permissions everywhere
+      setPermissions(permissions);
     }
-  }
+  },
 );
 ```
 
-## Storage Integration
+### refresh() — Reload From Source
 
-### Built-in LocalStorage
-
-Permissions are cached by default. To persist across page reloads:
+`refresh()` clears the cache and reloads permissions from the original source (global config or localStorage). It does **not** accept parameters:
 
 ```typescript
-// nuxt.config.ts
-export default defineNuxtConfig({
-  modules: ["vue-nuxt-permission"],
+const { refresh } = usePermission();
 
-  permission: {
-    permissions: ["user.view"],
-    storage: "localStorage", // Enable localStorage caching
-  },
+// Clear cache and reload permissions from source
+refresh();
+```
+
+::: warning configurePermission vs setPermissions
+`configurePermission()` only updates in-memory state. It does **NOT** save to localStorage. For runtime updates, always use `setPermissions()`.
+:::
+
+## Storage Behavior
+
+### How Storage Works
+
+Permissions are stored in `localStorage` under the key `__v_permission__` as Base64-encoded JSON.
+
+Storage is written automatically when:
+
+- The plugin installs with `persist: true` (default)
+- You call `setPermissions()` from the composable
+
+Storage is read automatically when:
+
+- The plugin installs (as fallback if no permissions provided)
+- The composable initializes (if global config is empty)
+
+### Reading & Writing Storage Manually
+
+```typescript
+import {
+  savePermissionsToStorage,
+  getPermissionsFromStorage,
+  clearPermissionsFromStorage,
+} from "vue-nuxt-permission";
+
+// Save directly to localStorage (Base64 encoded)
+savePermissionsToStorage(["admin", "editor"]);
+
+// Read and decode from localStorage
+const stored = getPermissionsFromStorage();
+// → ["admin", "editor"]
+
+// Remove from localStorage
+clearPermissionsFromStorage();
+```
+
+### Disable Persistence
+
+```typescript
+app.use(PermissionPlugin, {
+  permissions: ["user.view"],
+  persist: false, // ← Don't save to localStorage on install
 });
 ```
 
-### Custom Storage Adapter
-
-Implement a custom storage strategy:
-
-```typescript
-// utils/customPermissionStorage.ts
-export const customStorage = {
-  getPermissions: async () => {
-    // Fetch from custom source
-    const response = await fetch("/api/permissions");
-    return response.json();
-  },
-
-  setPermissions: async (permissions: string[]) => {
-    // Save to custom source
-    await fetch("/api/permissions", {
-      method: "PUT",
-      body: JSON.stringify(permissions),
-    });
-  },
-
-  clearPermissions: async () => {
-    // Clear from custom source
-    await fetch("/api/permissions", {
-      method: "DELETE",
-    });
-  },
-};
-
-// nuxt.config.ts
-import { customStorage } from "./utils/customPermissionStorage";
-
-export default defineNuxtConfig({
-  modules: ["vue-nuxt-permission"],
-
-  permission: {
-    permissions: ["user.view"],
-    storage: customStorage,
-  },
-});
-```
-
-### SessionStorage for Tab-Specific Permissions
-
-```typescript
-// nuxt.config.ts
-export default defineNuxtConfig({
-  modules: ["vue-nuxt-permission"],
-
-  permission: {
-    permissions: ["user.view"],
-    storage: "sessionStorage", // Per-tab caching
-  },
-});
-```
+::: tip
+Even with `persist: false`, calling `setPermissions()` will still save to localStorage. This option only affects the initial plugin installation.
+:::
 
 ## Permission Caching
 
@@ -714,23 +708,40 @@ export default defineNuxtConfig({
 
   permission: {
     permissions: ["user.view"],
-    debug: true, // Shows [v-permission:...] logs in console
+    developmentMode: true, // Shows [v-permission:...] logs in console
   },
+});
+```
+
+// Vue 3
+
+```typescript
+app.use(PermissionPlugin, {
+  permissions: ["user.view"],
+  developmentMode: process.env.NODE_ENV === "development",
 });
 ```
 
 ### Runtime Configuration
 
-Override configuration at runtime:
+Update permissions at runtime:
+
+```typescript
+import { usePermission } from "vue-nuxt-permission";
+
+const { setPermissions } = usePermission();
+
+// ✅ Updates memory + localStorage
+setPermissions(["user.view", "post.edit"]);
+```
+
+Or for low-level in-memory-only updates (advanced use):
 
 ```typescript
 import { configurePermission } from "vue-nuxt-permission";
 
-// Update configuration
-configurePermission({
-  permissions: ["user.view", "post.edit"],
-  debug: true,
-});
+// ⚠️ Only updates memory, NOT localStorage
+configurePermission(["user.view", "post.edit"], { developmentMode: true });
 ```
 
 ## TypeScript Configuration
@@ -784,10 +795,10 @@ export default defineRouteMiddleware(async (to, from) => {
 
 ```typescript
 // Only load admin permissions if user is admin
-const { refresh } = usePermission();
+const { setPermissions } = usePermission();
 const authStore = useAuthStore();
 
 if (authStore.user?.role === "admin") {
-  await refresh(["admin.access", "users.manage", "system.config"]);
+  setPermissions(["admin.access", "users.manage", "system.config"]);
 }
 ```

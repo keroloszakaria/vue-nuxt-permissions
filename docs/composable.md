@@ -140,6 +140,44 @@ const hasAll = canSync({ permissions: ["read", "write"], mode: "and" });
 
 ## Common Patterns
 
+### Login & Set Permissions
+
+The most common pattern — set permissions after API login:
+
+```vue
+<script setup lang="ts">
+import { usePermission } from "vue-nuxt-permission";
+
+const { setPermissions } = usePermission();
+
+async function handleLogin(email: string, password: string) {
+  const response = await fetch("/api/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+  const { user, token } = await response.json();
+
+  // ✅ Saves to memory AND localStorage (key: __v_permission__)
+  setPermissions(user.permissions);
+
+  localStorage.setItem("token", token);
+  router.push("/dashboard");
+}
+
+async function handleLogout() {
+  setPermissions([]); // Clear everything
+  localStorage.removeItem("token");
+  router.push("/login");
+}
+</script>
+```
+
+::: tip setPermissions vs configurePermission
+
+- `setPermissions()` → updates memory **+** localStorage ✅ (use this)
+- `configurePermission()` → updates memory only ⚠️ (low-level, not for login)
+  :::
+
 ### Check Permissions on Mount
 
 ```vue
@@ -226,22 +264,23 @@ watch(permissions, (newPerms) => {
 <script setup lang="ts">
 import { usePermission } from "vue-nuxt-permission";
 
-const { refresh } = usePermission();
-const authStore = useAuthStore();
+const { setPermissions, refresh } = usePermission();
 
 async function promoteToModerator() {
   // API call to promote user
   await api.user.setRole(userId, "moderator");
 
-  // Refresh permissions after status change
-  await refresh();
+  // Fetch new permissions and update
+  const res = await fetch(`/api/user/${userId}/permissions`);
+  const { permissions } = await res.json();
+  setPermissions(permissions);
 
   // UI updates automatically through reactive permissions
 }
 
 async function logout() {
-  // Clear permissions when logging out
-  await refresh([]);
+  // Clear all permissions (memory + localStorage)
+  setPermissions([]);
 }
 </script>
 ```

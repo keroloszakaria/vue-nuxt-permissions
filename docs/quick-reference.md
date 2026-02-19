@@ -217,36 +217,52 @@ const { canSync } = usePermission();
 ### Global Permission Guard
 
 ```ts
-// router.ts or main.ts
-import { createRouter } from "vue-router";
+import { createRouter, createWebHistory } from "vue-router";
 import { globalGuard } from "vue-nuxt-permission";
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    { path: "/login", component: LoginPage },
     {
-      path: "/admin",
-      component: AdminPanel,
-      meta: {
-        checkPermission: true,
-        permissions: "admin",
-      },
+      path: "/",
+      component: Layout,
+      meta: { requiresAuth: true },
+      children: [
+        { path: "dashboard", component: Dashboard },
+        {
+          path: "admin",
+          component: AdminPanel,
+          meta: {
+            checkPermission: true, // ← Required!
+            permissions: "admin",
+          },
+        },
+      ],
     },
   ],
 });
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   globalGuard(to, from, next, {
+    authRoutes: [{ path: "/login" }],
     getAuthState: () => ({
-      isAuthenticated: true,
-      permissions: ["admin", "editor"],
+      isAuthenticated: !!localStorage.getItem("token"),
+      permissions: [], // let library read from localStorage
     }),
     loginPath: "/login",
+    homePath: "/dashboard",
   });
 });
-
-export default router;
 ```
+
+::: tip Route Meta Cheatsheet
+| Meta Key | Type | Purpose |
+|----------|------|---------|
+| `requiresAuth` | `boolean` | Redirects to login if not authenticated |
+| `checkPermission` | `boolean` | Enables permission checking (must be `true`) |
+| `permissions` | `string \| string[] \| PermissionObject` | Required permission(s) |
+:::
 
 ### Protect Routes with Metadata
 
@@ -294,7 +310,7 @@ router.beforeEach(async (to, from, next) => {
   if (to.meta.checkPermission && to.meta.permissions) {
     const allowed = await hasPermission(
       to.meta.permissions,
-      authState.permissions
+      authState.permissions,
     );
     if (!allowed) {
       return next("/"); // Fallback to home

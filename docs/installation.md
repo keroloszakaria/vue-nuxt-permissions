@@ -51,8 +51,8 @@ export default defineNuxtConfig({
     // Define your permissions
     permissions: ["read", "write", "admin"],
 
-    // Storage strategy ('localStorage' | 'sessionStorage' | 'memory')
-    storage: "localStorage",
+    // Save to localStorage on install (default: true)
+    persist: true,
   },
 });
 ```
@@ -95,11 +95,15 @@ const app = createApp(App);
 
 app.use(PermissionPlugin, {
   permissions: ["read", "write", "admin"],
-  storage: "localStorage",
+  persist: true, // Save to localStorage (default)
 });
 
 app.mount("#app");
 ```
+
+app.mount("#app");
+
+````
 
 ### 2. Configure TypeScript (Optional)
 
@@ -114,7 +118,7 @@ declare module "vue-nuxt-permission" {
     permissions: "read" | "write" | "admin";
   }
 }
-```
+````
 
 ### 3. Use in Components
 
@@ -198,13 +202,13 @@ app.mount('#app')
 
 ### Permissions Not Loading
 
-Check your storage configuration and ensure permissions are properly defined:
+Make sure permissions are set after login using `setPermissions()`:
 
 ```ts
-permission: {
-  permissions: ['read', 'write', 'admin'],
-  storage: 'localStorage', // or 'sessionStorage'
-}
+import { usePermission } from "vue-nuxt-permission";
+
+const { setPermissions } = usePermission();
+setPermissions(["read", "write", "admin"]);
 ```
 
 ## Next Steps
